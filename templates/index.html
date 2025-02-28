@@ -24,6 +24,12 @@
       box-shadow: 0px 4px 15px rgba(0,0,0,0.2);
       padding: 10px 20px;
     }
+    /* Sticky navbar */
+    .sticky-top {
+      position: sticky;
+      top: 0;
+      z-index: 1020;
+    }
     .navbar-brand {
       font-weight: bold;
       color: white !important;
@@ -218,11 +224,22 @@
         font-size: 10px;
       }
     }
+    /* Description Toggle Styles */
+    .description-container {
+      display: inline;
+    }
+    .toggle-more {
+      margin-left: 5px;
+      color: #4a47a3;
+      cursor: pointer;
+      font-weight: bold;
+      text-decoration: none;
+    }
   </style>
 </head>
 <body>
-  <!-- Navigation Bar -->
-  <nav class="navbar navbar-expand-lg navbar-dark">
+  <!-- Navigation Bar with sticky-top so it remains visible on scroll -->
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
     <div class="container-fluid">
       <a class="navbar-brand" href="#">
         <i class="fas fa-file-alt"></i> Resume Analyzer
@@ -250,7 +267,7 @@
   <!-- Main White Container -->
   <div class="main-container">
     <h1><i class="fas fa-file-upload"></i> Resume Analyzer</h1>
-    <!-- Resume Upload Form (always at top) -->
+    <!-- Resume Upload Form -->
     <form action="/" method="POST" enctype="multipart/form-data" class="mt-4">
       <div class="upload-box" onclick="document.getElementById('resume').click()">
         <p><i class="fas fa-cloud-upload-alt fa-2x"></i></p>
@@ -269,7 +286,7 @@
       </div>
     {% endif %}
 
-    <!-- Name from Resume (if available) -->
+    <!-- Name from Resume -->
     {% if user_name %}
       <div class="alert alert-info mt-4" role="alert">
         <strong>Name from Resume:</strong> {{ user_name }}
@@ -330,8 +347,7 @@
                   alt="Company Logo" 
                   style="max-width: 80px; max-height: 80px; object-fit: contain;"
                 >
-              </div>              
-              
+              </div>
               {% endif %}
 
               <!-- Job Title & City -->
@@ -359,11 +375,16 @@
                 </p>
               {% endif %}
 
-              <!-- Description -->
+              <!-- Description with More/Less Toggle -->
               <p class="mb-1">
                 <strong>Description:</strong>
                 {% if job.job_description and job.job_description|length > 300 %}
-                  {{ job.job_description[:300] ~ "..." }}
+                  <span class="description-container">
+                    <span class="truncated">{{ job.job_description[:300] }}</span>
+                    <span class="ellipsis">...</span>
+                    <span class="full-text" style="display: none;">{{ job.job_description }}</span>
+                    <a href="#" class="toggle-more">more</a>
+                  </span>
                 {% else %}
                   {{ job.job_description or "No description available." }}
                 {% endif %}
@@ -374,9 +395,7 @@
                 <strong>Posted Date:</strong> {{ job.job_posted_at or "N/A" }}
               </small>
               {% if job.job_apply_link %}
-                <a href="{{ job.job_apply_link }}" class="btn btn-primary btn-sm" target="_blank">
-                  Apply
-                </a>
+                <a href="{{ job.job_apply_link }}" class="btn btn-primary btn-sm" target="_blank">Apply</a>
               {% else %}
                 <button class="btn btn-primary btn-sm" disabled>Apply</button>
               {% endif %}
@@ -390,10 +409,35 @@
     </div>
   </div>
 
-  <!-- JavaScript to Handle File Selection -->
+  <!-- JavaScript for File Selection and Description Toggle -->
   <script>
+    // Update upload box text when a file is selected
     document.getElementById('resume').addEventListener('change', function() {
       document.querySelector('.upload-box p').innerText = this.files[0].name;
+    });
+
+    // Description Toggle Functionality
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.toggle-more').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+          e.preventDefault();
+          var container = this.closest('.description-container');
+          var truncated = container.querySelector('.truncated');
+          var ellipsis = container.querySelector('.ellipsis');
+          var fullText = container.querySelector('.full-text');
+          if (fullText.style.display === 'none') {
+            fullText.style.display = 'inline';
+            truncated.style.display = 'none';
+            ellipsis.style.display = 'none';
+            this.innerText = 'less';
+          } else {
+            fullText.style.display = 'none';
+            truncated.style.display = 'inline';
+            ellipsis.style.display = 'inline';
+            this.innerText = 'more';
+          }
+        });
+      });
     });
   </script>
 </body>
