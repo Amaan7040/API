@@ -185,7 +185,7 @@ def compare_skills(predicted_job, extracted_skills, user_name):
 def fetch_job_listings_from_api(query="developer", country="india", page=1, job_type=None, remote=None, date_posted=None, salary_range=None, sort_by=None):
     url = "https://jsearch.p.rapidapi.com/search"
     headers = {
-        "x-rapidapi-key": "4b79c86f33msh4e37937197d933dp148c3ejsne9530e3d6fc5",
+        "x-rapidapi-key": "YOUR API KEY",  # Go to README.md file
         "x-rapidapi-host": "jsearch.p.rapidapi.com"
     }
     # Build parameters dictionary
