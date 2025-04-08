@@ -300,6 +300,20 @@
       </div>
     {% endif %}
 
+    <!-- Resume Score and Category Display -->
+    {% if resume_score is not none %}
+    <div class="alert alert-warning mt-4" role="alert">
+      <strong>Resume Score:</strong> {{ resume_score }}
+      {% if resume_score >= 9 %}
+        (<span class="text-success">Good</span>)
+      {% elif resume_score >= 5 %}
+        (<span class="text-warning">Moderate</span>)
+      {% else %}
+        (<span class="text-danger">Bad</span>)
+      {% endif %}
+    </div>
+    {% endif %}  
+
     <!-- Extracted Skills Display -->
     {% if extracted_skills and extracted_skills|length > 0 %}
       <div class="mt-4">
