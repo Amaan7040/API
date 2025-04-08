@@ -10,6 +10,7 @@ import pdfplumber
 from flask_cors import CORS
 from sklearn.feature_extraction.text import TfidfVectorizer
 import spacy
+from spacy.matcher import PhraseMatcher
 import mysql.connector
 import requests
 import numpy as np
@@ -55,14 +56,6 @@ education_map = {
 }
 
 def extract_features_for_score(text, extracted_skills):
-    """
-    Extract features based on updated logic:
-      1. Experience (years)
-      2. Skills count
-      3. Education level (encoded)
-      4. Certifications count
-      5. Projects count
-    """
     experience = extract_experience_safe(text)
     skills_count = len(extracted_skills)
     education_level = extract_education(text)
@@ -75,10 +68,6 @@ def extract_features_for_score(text, extracted_skills):
     return features
 
 def predict_resume_score(text, extracted_skills):
-    """
-    Load the XGBoost model from 'resume_score_model11.pkl', predict a raw score,
-    and then scale it to a 1-10 range.
-    """
     try:
         with open("resume_score_model11.pkl", "rb") as score_model_file:
             score_model = pickle.load(score_model_file)
@@ -89,8 +78,7 @@ def predict_resume_score(text, extracted_skills):
     
     features = extract_features_for_score(text, extracted_skills)
     try:
-        raw_score = score_model.predict([features])[0]  # Raw predicted score (assumed 0-40)
-        # Scale the score to a 1-10 range: raw_score 0 -> 1, raw_score 40 -> 10
+        raw_score = score_model.predict([features])[0]
         scaled_score = (raw_score / 40) * 9 + 1
         scaled_score = max(1, min(10, scaled_score))
         scaled_score = round(scaled_score, 3)
@@ -101,12 +89,6 @@ def predict_resume_score(text, extracted_skills):
         return None
 
 def get_resume_category(score):
-    """
-    Categorize the resume based on the scaled score (1 to 10):
-      - Good: score >= 8
-      - Moderate: 4 <= score < 8
-      - Bad: score < 4
-    """
     if score >= 8:
         return "Good"
     elif score >= 4:
@@ -119,28 +101,25 @@ def get_resume_category(score):
 nlp = spacy.load("en_core_web_sm")
 
 common_skills = {
-    skill.lower()
-    for skill in {
-        "Python", "Java", "C++", "C", "JavaScript", "HTML", "CSS",
-        "TypeScript", "Swift", "Kotlin", "Go", "Ruby", "PHP", "R", "MATLAB",
-        "Perl", "Rust", "Dart", "Scala", "Shell Scripting", "React", "Angular",
-        "Vue.js", "Node.js", "Django", "Flask", "Spring Boot", "Express.js",
-        "Laravel", "Bootstrap", "TensorFlow", "PyTorch", "Keras",
-        "Scikit-learn", "NLTK", "Pandas", "NumPy", "SQL", "MySQL",
-        "PostgreSQL", "MongoDB", "Firebase", "Cassandra", "Oracle", "Redis",
-        "MariaDB", "AWS", "Azure", "Google Cloud", "Docker", "Kubernetes",
-        "Terraform", "CI/CD", "Jenkins", "Git", "GitHub", "Cybersecurity",
-        "Penetration Testing", "Ubuntu", "Ethical Hacking", "Firewalls",
-        "Cryptography", "IDS", "Network Security", "Machine Learning",
-        "Deep Learning", "Numpy", "Pandas", "Matplotlib", "Computer Vision",
-        "NLP", "Big Data", "Hadoop", "Spark", "Data Analytics", "Power BI",
-        "Tableau", "Data Visualization", "Reinforcement Learning",
-        "Advanced DSA", "DSA", "Data Structures and Algorithm", "DevOps", "ML",
-        "DL", "Image Processing", "JIRA", "Postman", "Excel", "Leadership",
-        "Problem-Solving", "Communication", "Time Management", "Adaptability",
-        "Teamwork", "Presentation Skills", "Critical Thinking",
-        "Decision Making", "Public Speaking", "Project Management"
-    }
+    "python", "java", "c++", "c", "javascript", "html", "css",
+    "typescript", "swift", "kotlin", "go", "ruby", "php", "r", "matlab",
+    "perl", "rust", "dart", "scala", "shell scripting", "react", "angular",
+    "vue.js", "node.js", "django", "flask", "spring boot", "express.js",
+    "laravel", "bootstrap", "tensorflow", "pytorch", "keras",
+    "scikit-learn", "nltk", "pandas", "numpy", "sql", "mysql",
+    "postgresql", "mongodb", "firebase", "cassandra", "oracle", "redis",
+    "mariadb", "aws", "azure", "google cloud", "docker", "kubernetes",
+    "terraform", "ci/cd", "jenkins", "git", "github", "cybersecurity",
+    "penetration testing", "ubuntu", "ethical hacking", "firewalls",
+    "cryptography", "ids", "network security", "machine learning",
+    "deep learning", "numpy", "pandas", "matplotlib", "computer vision",
+    "natural language processing", "big data", "hadoop", "spark", 
+    "data analytics", "power bi", "tableau", "data visualization",
+    "reinforcement learning", "advanced dsa", "data structures and algorithm",
+    "devops", "image processing", "jira", "postman", "excel", "leadership",
+    "problem-solving", "communication", "time management", "adaptability",
+    "teamwork", "presentation skills", "critical thinking",
+    "decision making", "public speaking", "project management"
 }
 
 abbreviation_map = {
@@ -151,15 +130,48 @@ abbreviation_map = {
     "cv": "computer vision",
     "ds": "data science",
     "js": "javascript",
-    "html": "hypertext markup language",
-    "css": "cascading style sheets",
-    "sql": "structured query language",
     "aws": "amazon web services",
     "gcp": "google cloud platform",
     "azure": "microsoft azure",
     "dsa": "data structure algorithm",
-    "mysql": "my structured query language"
+    "sql": "structured query language"
 }
+
+# ----------------------- Skill Extraction ---------------------- #
+
+def expand_abbreviations(text, abbreviation_map):
+    pattern = re.compile(r'\b(' + '|'.join(re.escape(abbr) for abbr in abbreviation_map.keys()) + r')\b', re.IGNORECASE)
+    return pattern.sub(lambda x: abbreviation_map[x.group().lower()], text)
+
+def extract_skills(text):
+    expanded_text = expand_abbreviations(text, abbreviation_map)
+    doc = nlp(expanded_text.lower())
+    
+    matcher = PhraseMatcher(nlp.vocab, attr="LOWER")
+    skills_patterns = [nlp.make_doc(skill) for skill in common_skills]
+    matcher.add("SKILLS", None, *skills_patterns)
+    
+    matches = matcher(doc)
+    extracted_skills = set()
+    
+    for match_id, start, end in matches:
+        span = doc[start:end]
+        skill = span.text.strip()
+        if skill:
+            extracted_skills.add(skill)
+    
+    for token in doc:
+        if token.text in common_skills and len(token.text) > 2:
+            extracted_skills.add(token.text)
+    
+    formatted_skills = set()
+    for skill in extracted_skills:
+        clean_skill = re.sub(r'[^\w\s-]', '', skill).strip()
+        if clean_skill:
+            formatted_skills.add(clean_skill.title())
+    
+    print(f"[DEBUG] Enhanced skills extraction: {formatted_skills}")
+    return sorted(formatted_skills, key=lambda x: (-len(x), x))
 
 # ---------------------- Database Connection ---------------------- #
 
@@ -175,10 +187,6 @@ def get_db_connection(db_name="resume_screening_db"):
 # ---------------------- Resume Processing Functions ---------------------- #
 
 def extract_text_from_file(file):
-    """
-    Extract text from PDF or DOCX.
-    If the file is scanned or no text is extracted, return an empty string.
-    """
     text = ""
     if file.filename.endswith(".pdf"):
         with pdfplumber.open(file) as pdf:
@@ -189,94 +197,50 @@ def extract_text_from_file(file):
     elif file.filename.endswith(".docx"):
         doc = docx.Document(file)
         text = "\n".join([para.text for para in doc.paragraphs])
-    if not text.strip():
-        print("[DEBUG] No text extracted from file.")
-    else:
-        print(f"[DEBUG] Extracted text length: {len(text)} characters.")
     return text.strip()
-
-def extract_skills(text):
-    extracted_skills = set()
-    if not text:
-        return []
-    doc = nlp(text)
-    for token in doc:
-        if token.text.lower() in common_skills:
-            extracted_skills.add(token.text.lower())
-    print(f"[DEBUG] Extracted skills: {extracted_skills}")
-    return list(extracted_skills)
 
 def extract_name(text):
     lines = text.split('\n')
-    name = lines[0].strip() if lines else None
-    print(f"[DEBUG] Extracted name: {name}")
-    return name
+    return lines[0].strip() if lines else None
 
 def load_model_and_vectorizer():
-    """
-    Load your pre-trained classification model and TF-IDF vectorizer.
-    Returns (model, vectorizer) if successful.
-    """
     try:
         with open("model.pkl", "rb") as model_file:
             rf = pickle.load(model_file)
         with open("tfidf_vectorizer.pkl", "rb") as vectorizer_file:
             tfidf = pickle.load(vectorizer_file)
-        print("[DEBUG] Classification model and vectorizer loaded successfully.")
         return rf, tfidf
     except Exception as e:
-        print(f"[ERROR] Failed to load model/vectorizer: {e}")
+        print(f"[ERROR] Model loading failed: {e}")
         return None, None
 
 # ---------------------- Main Resume Processing ---------------------- #
 
 def process_resume(file):
-    """
-    Extract text, name, and skills from the resume.
-    Then run the classification model to predict the job role and
-    the scoring model to predict a resume score.
-    Returns:
-      (error_message, predicted_job, extracted_skills, user_name, resume_country, resume_score, resume_category)
-    """
     rf, tfidf = load_model_and_vectorizer()
     if not rf or not tfidf:
-        error_msg = "[ERROR] ML model is missing!"
-        print(error_msg)
-        return error_msg, None, [], None, "india", None, None
+        return "ML model missing!", None, [], None, "india", None, None
     
     text = extract_text_from_file(file)
     if not text:
-        error_msg = "[ERROR] No readable text found in resume!"
-        print(error_msg)
-        return error_msg, None, [], None, "india", None, None
+        return "No readable text!", None, [], None, "india", None, None
     
     user_name = extract_name(text)
     extracted_skills = extract_skills(text)
-    resume_country = "india"  # Default to India
+    resume_country = "india"
     
     try:
         text_vectorized = tfidf.transform([text])
         predicted_job = rf.predict(text_vectorized)[0]
-        print(f"[DEBUG] Predicted job role: {predicted_job}")
     except Exception as e:
-        error_msg = f"[ERROR] Prediction failed: {e}"
-        print(error_msg)
-        return error_msg, None, extracted_skills, user_name, resume_country, None, None
+        return f"Prediction failed: {e}", None, extracted_skills, user_name, resume_country, None, None
     
-    # Predict resume score using the updated scoring model
     resume_score = predict_resume_score(text, extracted_skills)
-    if resume_score is None:
-        print("[DEBUG] Resume score prediction returned None.")
-    resume_category = get_resume_category(resume_score) if resume_score is not None else None
-    print(f"[DEBUG] Resume category: {resume_category}")
+    resume_category = get_resume_category(resume_score) if resume_score else None
     
     return None, predicted_job, extracted_skills, user_name, resume_country, resume_score, resume_category
 
 def compare_skills(predicted_job, extracted_skills, user_name):
-    """
-    Compares extracted skills with the required skills for predicted_job.
-    Inserts missing skills into recommendskills table if any are missing.
-    """
     if not predicted_job:
         return []
     try:
@@ -285,54 +249,24 @@ def compare_skills(predicted_job, extracted_skills, user_name):
         cursor.execute("SELECT skills FROM jobrolesskills WHERE job_role = %s", (predicted_job,))
         job_data = cursor.fetchone()
         
-        if not job_data:
-            return []
-        
-        required_skills = set(job_data["skills"].lower().split(", "))
-        extracted_skills_set = set(skill.lower() for skill in extracted_skills)
-        missing_skills = required_skills - extracted_skills_set
-        
-        if missing_skills:
-            cursor.execute(
-                "INSERT INTO recommendskills (name, job_role, missing_skills) VALUES (%s, %s, %s)",
-                (user_name, predicted_job, ", ".join(missing_skills))
-            )
-            conn.commit()
+        if job_data:
+            required_skills = set(job_data["skills"].lower().split(", "))
+            extracted_skills_set = set(s.lower() for s in extracted_skills)
+            missing_skills = required_skills - extracted_skills_set
+            
+            if missing_skills:
+                cursor.execute(
+                    "INSERT INTO recommendskills (name, job_role, missing_skills) VALUES (%s, %s, %s)",
+                    (user_name, predicted_job, ", ".join(missing_skills))
+                )
+                conn.commit()
         
         cursor.close()
         conn.close()
-        print(f"[DEBUG] Missing skills: {missing_skills}")
         return list(missing_skills)
     except Exception as e:
-        print(f"[ERROR] Skill comparison failed: {e}")
+        print(f"[ERROR] Skill comparison: {e}")
         return []
-
-# ---------------------- Job Listings via API ---------------------- #
-
-def fetch_job_listings_from_api(query="developer", country="india", page=1, job_type=None, remote=None, date_posted=None, salary_range=None, sort_by=None):
-    url = "https://jsearch.p.rapidapi.com/search"
-    headers = {
-        "x-rapidapi-key": "f126e81261msha4b09d552d563fdp193eacjsndb819abae05f",  # Go to README.md file
-        "x-rapidapi-host": "jsearch.p.rapidapi.com"
-    }
-    params = {
-        "query": query,
-        "country": country,
-        "page": page
-    }
-    if job_type:
-        params["job_type"] = job_type
-    if remote is not None:
-        params["remote"] = remote
-    if date_posted:
-        params["date_posted"] = date_posted
-    if salary_range:
-        params["salary_range"] = salary_range
-    if sort_by:
-        params["sort_by"] = sort_by
-
-    response = requests.get(url, headers=headers, params=params)
-    return response.text
 
 # ---------------------- Flask Application Setup ---------------------- #
 
@@ -349,15 +283,13 @@ def job_details_api():
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    predicted_job = None
-    error_message = None
+    predicted_job = error_message = None
     extracted_skills = []
     missing_skills = []
     user_name = ""
     job_list = []
-    resume_country = "india"  # Fallback if extraction fails
-    resume_score = None
-    resume_category = None
+    resume_country = "india"
+    resume_score = resume_category = None
 
     if request.method == "POST":
         if "resume" not in request.files:
@@ -367,55 +299,34 @@ def index():
             if file.filename == "":
                 error_message = "No selected file!"
             else:
-                # Process the resume
                 error_message, predicted_job, extracted_skills, user_name, resume_country, resume_score, resume_category = process_resume(file)
                 
                 if not error_message:
-                    # Compare skills only if we got a valid predicted job
                     missing_skills = compare_skills(predicted_job, extracted_skills, user_name)
                     
-                    # Insert resume details into DB along with the predicted score
                     try:
                         conn = get_db_connection()
                         cursor = conn.cursor()
                         cursor.execute("INSERT INTO resumes (name, skills, score) VALUES (%s, %s, %s)",
-                          (user_name or "Unknown", ", ".join(extracted_skills), float(resume_score)))
-
+                                      (user_name or "Unknown", ", ".join(extracted_skills), float(resume_score)))
                         conn.commit()
                         cursor.close()
                         conn.close()
-                    except Exception as db_error:
-                        error_message = f"[ERROR] Database error: {db_error}"
-                        print(error_message)
-        
-        # Always try to fetch job listings after processing
+                    except Exception as e:
+                        error_message = f"Database error: {e}"
+
         if not error_message:
             job_list = []
-            if extracted_skills:
-                for skill in extracted_skills:
-                    job_listings_json = fetch_job_listings_from_api(query=skill, country=resume_country)
-                    try:
-                        job_listings_data = json.loads(job_listings_json)
-                        if isinstance(job_listings_data, dict) and "data" in job_listings_data:
-                            job_list.extend(job_listings_data["data"])
-                    except Exception as e:
-                        print(f"[ERROR] Failed to fetch or parse job listings for {skill}: {e}")
-            elif predicted_job:
-                job_listings_json = fetch_job_listings_from_api(query=predicted_job, country=resume_country)
+            search_terms = extracted_skills if extracted_skills else ([predicted_job] if predicted_job else ["developer"])
+            
+            for term in search_terms[:3]:  # Limit to 3 search terms
                 try:
+                    job_listings_json = fetch_job_listings_from_api(query=term, country=resume_country)
                     job_listings_data = json.loads(job_listings_json)
                     if isinstance(job_listings_data, dict) and "data" in job_listings_data:
-                        job_list = job_listings_data["data"]
+                        job_list.extend(job_listings_data["data"][:5])  # Take top 5 results per term
                 except Exception as e:
-                    print(f"[ERROR] Failed to fetch or parse job listings for {predicted_job}: {e}")
-            else:
-                job_listings_json = fetch_job_listings_from_api(query="developer", country=resume_country)
-                try:
-                    job_listings_data = json.loads(job_listings_json)
-                    if isinstance(job_listings_data, dict) and "data" in job_listings_data:
-                        job_list = job_listings_data["data"]
-                except Exception as e:
-                    print(f"[ERROR] Failed to fetch or parse job listings for 'developer': {e}")
+                    print(f"Job search error for {term}: {e}")
 
     return render_template("index.html",
                            user_name=user_name or "",
@@ -426,6 +337,18 @@ def index():
                            extracted_skills=extracted_skills,
                            missing_skills=missing_skills,
                            job_list=job_list)
+
+def fetch_job_listings_from_api(query="developer", country="india", page=1, job_type=None):
+    url = "https://jsearch.p.rapidapi.com/search"
+    headers = {
+        "x-rapidapi-key": "f126e81261msha4b09d552d563fdp193eacjsndb819abae05f",
+        "x-rapidapi-host": "jsearch.p.rapidapi.com"
+    }
+    params = {"query": f"{query} in {country}", "page": page, "num_pages": 1}
+    if job_type:
+        params["job_type"] = job_type
+    response = requests.get(url, headers=headers, params=params)
+    return response.text
 
 if __name__ == "__main__":
     app.run(debug=True)
