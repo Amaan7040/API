@@ -33,12 +33,15 @@ def extract_experience_safe(resume_text):
 
 def extract_education(resume_text):
     text_lower = resume_text.lower()
+    # Check diploma before bachelor so that "diploma" is not overshadowed by bachelor keywords
     if "phd" in text_lower or "doctorate" in text_lower:
         return "PhD"
     elif "master" in text_lower or "ms" in text_lower or "m.sc" in text_lower:
         return "Master's"
     elif "bachelor" in text_lower or "bs" in text_lower or "b.tech" in text_lower:
         return "Bachelor's"
+    elif "diploma" in text_lower:
+        return "Diploma"
     else:
         return "Other"
 
@@ -48,11 +51,14 @@ def count_certifications(resume_text):
 def count_projects(resume_text):
     return len(re.findall(r"project", resume_text, re.IGNORECASE))
 
+# Updated education mapping:
+# Other: 0, Diploma: 1, Bachelor's: 2, Master's: 3, PhD: 4
 education_map = {
     "Other": 0,
-    "Bachelor's": 1,
-    "Master's": 2,
-    "PhD": 3
+    "Diploma": 1,
+    "Bachelor's": 2,
+    "Master's": 3,
+    "PhD": 4
 }
 
 def extract_features_for_score(text, extracted_skills):
@@ -100,28 +106,40 @@ def get_resume_category(score):
 
 nlp = spacy.load("en_core_web_sm")
 
-common_skills = {
+# Technical skills set
+technical_skills = {
     "python", "java", "c++", "c", "javascript", "html", "css",
     "typescript", "swift", "kotlin", "go", "ruby", "php", "r", "matlab",
     "perl", "rust", "dart", "scala", "shell scripting", "react", "angular",
     "vue.js", "node.js", "django", "flask", "spring boot", "express.js",
     "laravel", "bootstrap", "tensorflow", "pytorch", "keras",
-    "scikit-learn", "nltk", "pandas", "numpy", "sql", "mysql",
+    "scikit learn", "nltk", "pandas", "numpy", "sql", "mysql",
     "postgresql", "mongodb", "firebase", "cassandra", "oracle", "redis",
     "mariadb", "aws", "azure", "google cloud", "docker", "kubernetes",
     "terraform", "ci/cd", "jenkins", "git", "github", "cybersecurity",
     "penetration testing", "ubuntu", "ethical hacking", "firewalls",
     "cryptography", "ids", "network security", "machine learning",
-    "deep learning", "numpy", "pandas", "matplotlib", "computer vision",
+    "deep learning", "matplotlib", "computer vision",
     "natural language processing", "big data", "hadoop", "spark", 
     "data analytics", "power bi", "tableau", "data visualization",
     "reinforcement learning", "advanced dsa", "data structures and algorithm",
-    "devops", "image processing", "jira", "postman", "excel", "leadership",
-    "problem-solving", "communication", "time management", "adaptability",
-    "teamwork", "presentation skills", "critical thinking",
-    "decision making", "public speaking", "project management"
+    "devops", "image processing", "jira", "postman", "excel", "data preprocessing",
+    "matplotlib", "seaborn", "api integration"
 }
 
+# Non-technical (soft) skills
+non_technical_skills = {
+    "leadership", "problem-solving", "communication", "time management",
+    "adaptability", "teamwork", "presentation skills", "critical thinking",
+    "decision making", "public speaking", "project management",
+    "customer service", "organization", "strategic planning",
+    "relationship management", "creativity", "negotiation", "collaboration"
+}
+
+# Merge both sets for enhanced extraction
+common_skills = technical_skills.union(non_technical_skills)
+
+# Abbreviation map for common abbreviations
 abbreviation_map = {
     "ml": "machine learning",
     "ai": "artificial intelligence",
@@ -133,8 +151,7 @@ abbreviation_map = {
     "aws": "amazon web services",
     "gcp": "google cloud platform",
     "azure": "microsoft azure",
-    "dsa": "data structure algorithm",
-    "sql": "structured query language"
+    "dsa": "data structure algorithm"
 }
 
 # ----------------------- Skill Extraction ---------------------- #
@@ -179,7 +196,7 @@ def get_db_connection(db_name="resume_screening_db"):
     return mysql.connector.connect(
         host="localhost",
         user="root",
-        password="amaan@khan704093",
+        password="", # your db password
         database=db_name,
         auth_plugin="mysql_native_password"
     )
@@ -205,9 +222,9 @@ def extract_name(text):
 
 def load_model_and_vectorizer():
     try:
-        with open("model.pkl", "rb") as model_file:
+        with open("combined_job_predict_model.pkl", "rb") as model_file:
             rf = pickle.load(model_file)
-        with open("tfidf_vectorizer.pkl", "rb") as vectorizer_file:
+        with open("combined_tfidf_vectorizer.pkl", "rb") as vectorizer_file:
             tfidf = pickle.load(vectorizer_file)
         return rf, tfidf
     except Exception as e:
@@ -260,7 +277,6 @@ def compare_skills(predicted_job, extracted_skills, user_name):
                     (user_name, predicted_job, ", ".join(missing_skills))
                 )
                 conn.commit()
-        
         cursor.close()
         conn.close()
         return list(missing_skills)
@@ -303,12 +319,11 @@ def index():
                 
                 if not error_message:
                     missing_skills = compare_skills(predicted_job, extracted_skills, user_name)
-                    
                     try:
                         conn = get_db_connection()
                         cursor = conn.cursor()
                         cursor.execute("INSERT INTO resumes (name, skills, score) VALUES (%s, %s, %s)",
-                                      (user_name or "Unknown", ", ".join(extracted_skills), float(resume_score)))
+                                       (user_name or "Unknown", ", ".join(extracted_skills), float(resume_score)))
                         conn.commit()
                         cursor.close()
                         conn.close()
@@ -318,13 +333,12 @@ def index():
         if not error_message:
             job_list = []
             search_terms = extracted_skills if extracted_skills else ([predicted_job] if predicted_job else ["developer"])
-            
-            for term in search_terms[:3]:  # Limit to 3 search terms
+            for term in search_terms[:3]:
                 try:
                     job_listings_json = fetch_job_listings_from_api(query=term, country=resume_country)
                     job_listings_data = json.loads(job_listings_json)
                     if isinstance(job_listings_data, dict) and "data" in job_listings_data:
-                        job_list.extend(job_listings_data["data"][:5])  # Take top 5 results per term
+                        job_list.extend(job_listings_data["data"][:5])
                 except Exception as e:
                     print(f"Job search error for {term}: {e}")
 
@@ -341,7 +355,7 @@ def index():
 def fetch_job_listings_from_api(query="developer", country="india", page=1, job_type=None):
     url = "https://jsearch.p.rapidapi.com/search"
     headers = {
-        "x-rapidapi-key": "f126e81261msha4b09d552d563fdp193eacjsndb819abae05f",
+        "x-rapidapi-key": "", # your API Key 
         "x-rapidapi-host": "jsearch.p.rapidapi.com"
     }
     params = {"query": f"{query} in {country}", "page": page, "num_pages": 1}
