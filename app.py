@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify,redirect, render_template, request, session
 import http.client
 import json
 import urllib.parse
@@ -14,6 +14,7 @@ from spacy.matcher import PhraseMatcher
 import mysql.connector
 import requests
 import numpy as np
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # ---------------------- Resume Scoring Features ---------------------- #
 
@@ -33,7 +34,6 @@ def extract_experience_safe(resume_text):
 
 def extract_education(resume_text):
     text_lower = resume_text.lower()
-    # Check diploma before bachelor so that "diploma" is not overshadowed by bachelor keywords
     if "phd" in text_lower or "doctorate" in text_lower:
         return "PhD"
     elif "master" in text_lower or "ms" in text_lower or "m.sc" in text_lower:
@@ -52,7 +52,6 @@ def count_projects(resume_text):
     return len(re.findall(r"project", resume_text, re.IGNORECASE))
 
 # Updated education mapping:
-# Other: 0, Diploma: 1, Bachelor's: 2, Master's: 3, PhD: 4
 education_map = {
     "Other": 0,
     "Diploma": 1,
@@ -74,6 +73,10 @@ def extract_features_for_score(text, extracted_skills):
     return features
 
 def predict_resume_score(text, extracted_skills):
+    # If your combined model is only for job role prediction,
+    # you may keep this separate resume scoring function as-is.
+    # Otherwise, if the combined model also provides scoring, 
+    # update this function accordingly.
     try:
         with open("resume_score_model11.pkl", "rb") as score_model_file:
             score_model = pickle.load(score_model_file)
@@ -123,8 +126,8 @@ technical_skills = {
     "natural language processing", "big data", "hadoop", "spark", 
     "data analytics", "power bi", "tableau", "data visualization",
     "reinforcement learning", "advanced dsa", "data structures and algorithm",
-    "devops", "image processing", "jira", "postman", "excel", "data preprocessing",
-    "matplotlib", "seaborn", "api integration"
+    "devops", "image processing", "jira", "postman", "excel", "data processing", "scikit-learn"
+    "matplotlib", "seaborn", "api integration", "data mining","scikit-learn", "data preprocessing"
 }
 
 # Non-technical (soft) skills
@@ -196,7 +199,7 @@ def get_db_connection(db_name="resume_screening_db"):
     return mysql.connector.connect(
         host="localhost",
         user="root",
-        password="", # your db password
+        password="amaan@khan704093",
         database=db_name,
         auth_plugin="mysql_native_password"
     )
@@ -220,13 +223,17 @@ def extract_name(text):
     lines = text.split('\n')
     return lines[0].strip() if lines else None
 
+# ==========================================================
+# Updated: Load combined model and vectorizer (tvectorizer)
+# ==========================================================
 def load_model_and_vectorizer():
     try:
-        with open("combined_job_predict_model.pkl", "rb") as model_file:
-            rf = pickle.load(model_file)
-        with open("combined_tfidf_vectorizer.pkl", "rb") as vectorizer_file:
-            tfidf = pickle.load(vectorizer_file)
-        return rf, tfidf
+        with open("combined_job_predict_model1.pkl", "rb") as model_file:
+            combined_model = pickle.load(model_file)
+        with open("combined_tfidf_vectorizer1.pkl", "rb") as vectorizer_file:
+            tvectorizer = pickle.load(vectorizer_file)
+        print("[DEBUG] Combined model and vectorizer loaded.")
+        return combined_model, tvectorizer
     except Exception as e:
         print(f"[ERROR] Model loading failed: {e}")
         return None, None
@@ -234,8 +241,9 @@ def load_model_and_vectorizer():
 # ---------------------- Main Resume Processing ---------------------- #
 
 def process_resume(file):
-    rf, tfidf = load_model_and_vectorizer()
-    if not rf or not tfidf:
+    # Load the new combined model and vectorizer
+    rf, vectorizer = load_model_and_vectorizer()
+    if not rf or not vectorizer:
         return "ML model missing!", None, [], None, "india", None, None
     
     text = extract_text_from_file(file)
@@ -247,7 +255,8 @@ def process_resume(file):
     resume_country = "india"
     
     try:
-        text_vectorized = tfidf.transform([text])
+        text_vectorized = vectorizer.transform([text])
+        print(f"[DEBUG] Non-zero elements: {text_vectorized.nonzero()}")
         predicted_job = rf.predict(text_vectorized)[0]
     except Exception as e:
         return f"Prediction failed: {e}", None, extracted_skills, user_name, resume_country, None, None
@@ -288,6 +297,7 @@ def compare_skills(predicted_job, extracted_skills, user_name):
 
 app = Flask(__name__, template_folder="templates")
 CORS(app)
+app.secret_key = "amaankhan746473376693"
 
 @app.route("/api/job-details", methods=["GET"])
 def job_details_api():
@@ -355,7 +365,7 @@ def index():
 def fetch_job_listings_from_api(query="developer", country="india", page=1, job_type=None):
     url = "https://jsearch.p.rapidapi.com/search"
     headers = {
-        "x-rapidapi-key": "", # your API Key 
+        "x-rapidapi-key": "8f92a3f809msh5eedc068f4e98e7p196ca9jsn325f2d6ae7bf",
         "x-rapidapi-host": "jsearch.p.rapidapi.com"
     }
     params = {"query": f"{query} in {country}", "page": page, "num_pages": 1}
@@ -363,6 +373,70 @@ def fetch_job_listings_from_api(query="developer", country="india", page=1, job_
         params["job_type"] = job_type
     response = requests.get(url, headers=headers, params=params)
     return response.text
+
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    message = ""
+    if request.method == 'POST':
+        username = request.form.get('username')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        if not (username and email and password):
+            message = "All fields are required!"
+            return render_template('signup.html', message=message)
+        hashed_password = generate_password_hash(password)
+        try:
+            conn = get_db_connection("signup_db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM users_signup_details WHERE email = %s", (email,))
+            if cursor.fetchone():
+                message = "User already exists! Try logging in."
+            else:
+                cursor.execute(
+                    "INSERT INTO users_signup_details (username, email, password) VALUES (%s, %s, %s)",
+                    (username, email, hashed_password)
+                )
+                conn.commit()
+                message = "Signup Successful! Now you can login."
+            cursor.close()
+            conn.close()
+        except Exception as e:
+            message = f"Error: {e}"
+    return render_template('signup.html', message=message)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    message = ""
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
+        try:
+            conn = get_db_connection("signup_db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, username, password FROM users_signup_details WHERE email = %s", (email,))
+            user = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            if user:
+                user_id, username, stored_password = user
+                if check_password_hash(stored_password, password):
+                    session['user_id'] = user_id
+                    session['username'] = username
+                    return redirect('/dashboard')
+                else:
+                    message = "Invalid Credentials!"
+            else:
+                message = "Invalid Credentials!"
+        except Exception as e:
+            message = f"Error: {e}"
+    return render_template('login.html', message=message)
+
+@app.route('/dashboard')
+def dashboard():
+    # if 'username' in session:
+    #     return f"Welcome {session['username']} to your dashboard!"
+    return redirect('/')
+
 
 if __name__ == "__main__":
     app.run(debug=True)
