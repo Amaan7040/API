@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Resume Analyzer</title>
+  <!-- Bootstrap CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <!-- Bootstrap Bundle (JS) -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Font Awesome -->
+  <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+  <style>
+    body {
+      background: linear-gradient(to right, #667eea, #764ba2);
+      color: white;
+      font-family: 'Poppins', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    /* Navigation Bar */
+    .navbar {
+      background: linear-gradient(to right, #4a47a3, #667eea);
+      box-shadow: 0px 4px 15px rgba(0,0,0,0.2);
+      padding: 10px 20px;
+    }
+    /* Sticky navbar */
+    .sticky-top {
+      position: sticky;
+      top: 0;
+      z-index: 1020;
+    }
+    .navbar-brand {
+      font-weight: bold;
+      color: white !important;
+      font-size: 24px;
+      display: flex;
+      align-items: center;
+    }
+    .navbar-brand i {
+      margin-right: 10px;
+      font-size: 28px;
+    }
+    .nav-link {
+      color: white !important;
+      font-weight: 500;
+      margin: 0 10px;
+      padding: 8px 15px;
+      border-radius: 5px;
+      transition: all 0.3s ease-in-out;
+      position: relative;
+    }
+    .nav-link::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      width: 0;
+      height: 2px;
+      background: white;
+      transition: all 0.3s ease-in-out;
+    }
+    .nav-link:hover::after {
+      width: 100%;
+      left: 0;
+    }
+    .nav-link:hover {
+      background: rgba(255,255,255,0.1);
+      transform: translateY(-2px);
+    }
+    .navbar-toggler {
+      border: none;
+      outline: none;
+    }
+    /* Main White Container */
+    .main-container {
+      max-width: 800px;
+      margin: 30px auto;
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      color: #333;
+      box-shadow: 0px 4px 10px rgba(0,0,0,0.2);
+      animation: fadeIn 1s ease-in-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    h1 {
+      font-weight: bold;
+      color: #4a47a3;
+      font-size: 28px;
+      text-align: center;
+    }
+    /* Upload Box */
+    .upload-box {
+      border: 2px dashed #4a47a3;
+      border-radius: 8px;
+      padding: 15px;
+      text-align: center;
+      cursor: pointer;
+      background: #f8f9fa;
+      transition: all 0.3s ease-in-out;
+    }
+    .upload-box:hover {
+      background: #e9ecef;
+      transform: scale(1.02);
+    }
+    .btn-primary {
+      width: 100%;
+      font-size: 16px;
+      font-weight: bold;
+      transition: all 0.3s ease-in-out;
+    }
+    .btn-primary:hover {
+      background: #4a47a3;
+      transform: translateY(-2px);
+    }
+    .job-card .btn-primary {
+      width: auto;
+      padding: 0.25rem 0.5rem;
+      font-size: 0.875rem;
+    }
+    /* Skills List Group Items */
+    .list-group-item {
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      transition: all 0.3s ease-in-out;
+      border: 1px solid #ccc;
+    }
+    .list-group-item:hover {
+      background: #f1f1f1;
+      transform: translateX(5px);
+    }
+    .badge {
+      background: #4a47a3;
+      font-size: 12px;
+    }
+    /* Job Listings Container */
+    .job-listings-container {
+      background-color: #b39ddb;
+      padding: 20px;
+      border-radius: 8px;
+      margin-top: 20px;
+    }
+    .job-listings-container h2 {
+      color: #fff;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    /* Job Card */
+    .job-card {
+      background: #fff;
+      border: 1px solid #eaeaea;
+      border-radius: 8px;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      margin-bottom: 15px;
+      width: 100%;
+    }
+    .job-card:hover {
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+      transform: translateY(-2px) scale(1.01);
+    }
+    .job-card .card-body {
+      padding: 15px;
+    }
+    .job-card .card-footer {
+      border-top: 1px solid #ddd;
+      padding: 10px 15px;
+    }
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .navbar-brand {
+        font-size: 20px;
+      }
+      .navbar-brand i {
+        font-size: 24px;
+      }
+      .nav-link {
+        font-size: 14px;
+        margin: 0 5px;
+        padding: 6px 10px;
+      }
+      .main-container {
+        margin: 20px auto;
+        padding: 15px;
+      }
+      h1 {
+        font-size: 24px;
+      }
+      .btn-primary {
+        font-size: 14px;
+      }
+      .list-group-item {
+        font-size: 12px;
+      }
+    }
+    @media (max-width: 480px) {
+      .navbar-brand {
+        font-size: 18px;
+      }
+      .navbar-brand i {
+        font-size: 22px;
+      }
+      .nav-link {
+        font-size: 12px;
+        margin: 0 3px;
+        padding: 5px 8px;
+      }
+      .main-container {
+        margin: 15px auto;
+        padding: 10px;
+      }
+      h1 {
+        font-size: 20px;
+      }
+      .btn-primary {
+        font-size: 12px;
+      }
+      .list-group-item {
+        font-size: 10px;
+      }
+    }
+    /* Description Toggle Styles */
+    .description-container {
+      display: inline;
+    }
+    .toggle-more {
+      margin-left: 5px;
+      color: #4a47a3;
+      cursor: pointer;
+      font-weight: bold;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation Bar with sticky-top so it remains visible on scroll -->
+  <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#">
+        <i class="fas fa-file-alt"></i> Resume Analyzer
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+              aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item">
+            <a class="nav-link" onclick="window.location.href='/signup'"><i class="fas fa-sign-in-alt"></i> Sign Up</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" onclick="window.location.href='/login'"><i class="fas fa-user"></i> Login</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#"><i class="fas fa-address-book"></i> Contacts</a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main White Container -->
+  <div class="main-container">
+    <h1><i class="fas fa-file-upload"></i> Resume Analyzer</h1>
+    <!-- Resume Upload Form -->
+    <form action="/" method="POST" enctype="multipart/form-data" class="mt-4">
+      <div class="upload-box" onclick="document.getElementById('resume').click()">
+        <p><i class="fas fa-cloud-upload-alt fa-2x"></i></p>
+        <p>Click to upload your resume (PDF/DOCX)</p>
+        <input type="file" class="form-control d-none" id="resume" name="resume" accept=".pdf,.docx" required>
+      </div>
+      <button type="submit" class="btn btn-primary mt-3">
+        <i class="fas fa-search"></i> Process/Analyze
+      </button>
+    </form>
+
+    <!-- Error Message Display -->
+    {% if error_message %}
+      <div class="alert alert-danger mt-4" role="alert">
+        <strong>Error:</strong> {{ error_message }}
+      </div>
+    {% endif %}
+
+    <!-- Name from Resume -->
+    {% if user_name %}
+      <div class="alert alert-info mt-4" role="alert">
+        <strong>Name from Resume:</strong> {{ user_name }}
+      </div>
+    {% endif %}
+
+    <!-- Predicted Job Role Display -->
+    {% if predicted_job %}
+      <div class="alert alert-success mt-4" role="alert">
+        <strong>Predicted Job Role:</strong> {{ predicted_job }}
+      </div>
+    {% endif %}
+
+    <!-- Resume Score and Category Display -->
+    {% if resume_score is not none %}
+    <div class="alert alert-warning mt-4" role="alert">
+      <strong>Resume Score:</strong> {{ resume_score }}
+      {% if resume_score >= 9 %}
+        (<span class="text-success">Good</span>)
+      {% elif resume_score >= 5 %}
+        (<span class="text-warning">Moderate</span>)
+      {% else %}
+        (<span class="text-danger">Bad</span>)
+      {% endif %}
+    </div>
+    {% endif %}  
+
+    <!-- Extracted Skills Display -->
+    {% if extracted_skills and extracted_skills|length > 0 %}
+      <div class="mt-4">
+        <h4><i class="fas fa-lightbulb"></i> Extracted Skills</h4>
+        <ul class="list-group list-group-horizontal flex-wrap">
+          {% for skill in extracted_skills %}
+            <li class="list-group-item d-flex align-items-center m-1">
+              {{ skill }}
+              <span class="badge bg-primary ms-2">{{ loop.index }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <!-- Recommended Skills Display -->
+    {% if missing_skills and missing_skills|length > 0 %}
+      <div class="mt-4">
+        {% if predicted_job %}
+          <h4><i class="fas fa-tools"></i> Recommended Skills for {{ predicted_job }}</h4>
+        {% else %}
+          <h4><i class="fas fa-tools"></i> Recommended Skills</h4>
+        {% endif %}
+        <ul class="list-group list-group-horizontal flex-wrap">
+          {% for skill in missing_skills %}
+            <li class="list-group-item list-group-item-warning m-1">{{ skill }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <!-- Job Listings -->
+    <div class="job-listings-container">
+      <h2><i class="fas fa-briefcase"></i> Job Listings</h2>
+      {% if job_list and job_list|length > 0 %}
+        <div class="d-flex flex-column align-items-center w-100">
+          {% for job in job_list %}
+          <div class="card job-card mb-3">
+            <div class="card-body">
+              <!-- Employer Logo (if available) -->
+              {% if job.employer_logo %}
+              <div class="mb-3" style="float: left;">
+                <img 
+                  src="{{ job.employer_logo }}" 
+                  alt="Company Logo" 
+                  style="max-width: 80px; max-height: 80px; object-fit: contain;"
+                >
+              </div>
+              {% endif %}
+
+              <!-- Job Title & City -->
+              <h5 class="card-title">
+                {{ job.job_title or "N/A" }}
+                {% if job.job_city %}
+                  – {{ job.job_city }}
+                {% endif %}
+              </h5>
+              <!-- Company Name -->
+              <p class="mb-1">
+                <strong>Company:</strong> {{ job.employer_name or "Unknown Company" }}
+              </p>
+              <!-- Location -->
+              {% if job.job_location %}
+                <p class="mb-1">
+                  <strong>Location:</strong> {{ job.job_location }}
+                </p>
+              {% endif %}
+
+              <!-- Employment Type -->
+              {% if job.job_employment_type %}
+                <p class="mb-1">
+                  <strong>Employment Type:</strong> {{ job.job_employment_type }}
+                </p>
+              {% endif %}
+
+              <!-- Description with More/Less Toggle -->
+              <p class="mb-1">
+                <strong>Description:</strong>
+                {% if job.job_description and job.job_description|length > 300 %}
+                  <span class="description-container">
+                    <span class="truncated">{{ job.job_description[:300] }}</span>
+                    <span class="ellipsis">...</span>
+                    <span class="full-text" style="display: none;">{{ job.job_description }}</span>
+                    <a href="#" class="toggle-more">more</a>
+                  </span>
+                {% else %}
+                  {{ job.job_description or "No description available." }}
+                {% endif %}
+              </p>
+            </div>
+            <div class="card-footer d-flex justify-content-between align-items-center">
+              <small class="text-muted">
+                <strong>Posted Date:</strong> {{ job.job_posted_at or "N/A" }}
+              </small>
+              {% if job.job_apply_link %}
+                <a href="{{ job.job_apply_link }}" class="btn btn-primary btn-sm" target="_blank">Apply</a>
+              {% else %}
+                <button class="btn btn-primary btn-sm" disabled>Apply</button>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-center text-white">No job listings found.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- JavaScript for File Selection and Description Toggle -->
+  <script>
+    // Update upload box text when a file is selected
+    document.getElementById('resume').addEventListener('change', function() {
+      document.querySelector('.upload-box p').innerText = this.files[0].name;
+    });
+
+    // Description Toggle Functionality
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.toggle-more').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+          e.preventDefault();
+          var container = this.closest('.description-container');
+          var truncated = container.querySelector('.truncated');
+          var ellipsis = container.querySelector('.ellipsis');
+          var fullText = container.querySelector('.full-text');
+          if (fullText.style.display === 'none') {
+            fullText.style.display = 'inline';
+            truncated.style.display = 'none';
+            ellipsis.style.display = 'none';
+            this.innerText = 'less';
+          } else {
+            fullText.style.display = 'none';
+            truncated.style.display = 'inline';
+            ellipsis.style.display = 'inline';
+            this.innerText = 'more';
+          }
+        });
+      });
+    });
+  </script>
+</body>
+</html>
