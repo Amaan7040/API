@@ -10,6 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <!-- Font Awesome -->
   <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       background: linear-gradient(to right, #667eea, #764ba2);
@@ -235,6 +236,123 @@
       font-weight: bold;
       text-decoration: none;
     }
+
+    canvas {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    button {
+      margin-top: 20px;
+      background-color: #007bff;
+      color: white;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    #matchSummary {
+      margin-top: 15px;
+      font-size: 18px;
+      font-weight: bold;
+      color: #0d6efd;
+    }
+    /* Ensure main container scales smoothly */
+@media (max-width: 991px) {
+  .main-container {
+    margin: 20px 10px;
+    padding: 15px;
+  }
+
+  .upload-box p {
+    font-size: 14px;
+  }
+
+  .job-card {
+    margin: 10px 0;
+  }
+
+  canvas {
+    width: 100% !important;
+    height: auto !important;
+  }
+}
+
+/* Stack elements better on small screens */
+@media (max-width: 768px) {
+  .navbar-brand {
+    font-size: 18px;
+  }
+
+  .navbar-toggler {
+    font-size: 16px;
+  }
+
+  .nav-link {
+    font-size: 13px;
+    padding: 6px 10px;
+  }
+
+  .upload-box {
+    font-size: 14px;
+    padding: 10px;
+  }
+
+  h1, h4, h2 {
+    font-size: 20px;
+    text-align: center;
+  }
+
+  .job-card .card-body, 
+  .job-card .card-footer {
+    padding: 10px;
+  }
+
+  .list-group-item {
+    font-size: 12px;
+    flex: 1 1 45%;
+    text-align: center;
+  }
+
+  .d-flex.gap-2 {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  button {
+    width: 100%;
+  }
+}
+
+/* Adjust for very narrow devices */
+@media (max-width: 480px) {
+  .nav-link {
+    font-size: 12px;
+    margin: 0 2px;
+    padding: 4px 6px;
+  }
+
+  .list-group-item {
+    flex: 1 1 100%;
+    margin: 4px 0;
+  }
+
+  .job-card .card-title {
+    font-size: 16px;
+  }
+
+  .job-card img {
+    max-width: 60px;
+    max-height: 60px;
+  }
+
+  .job-listings-container {
+    padding: 15px;
+  }
+}
+
   </style>
 </head>
 <body>
@@ -312,7 +430,22 @@
         (<span class="text-danger">Bad</span>)
       {% endif %}
     </div>
-    {% endif %}  
+
+    <!-- Progress Bar Visualization -->
+    <div class="mt-2">
+      <div class="progress">
+        <div 
+          class="progress-bar" 
+          role="progressbar" 
+          style="width: {{ (resume_score/10)*100 }}%;" 
+          aria-valuenow="{{ (resume_score/10)*100 }}" 
+          aria-valuemin="0" 
+          aria-valuemax="100">
+          {{ resume_score }}/10
+        </div>
+      </div>
+    </div>
+    {% endif %}
 
     <!-- Extracted Skills Display -->
     {% if extracted_skills and extracted_skills|length > 0 %}
@@ -345,6 +478,19 @@
       </div>
     {% endif %}
 
+<h2>Skill Match Radar Chart</h2>
+<canvas id="radarChart"></canvas>
+<p id="matchSummary"></p>
+
+<!-- Download Buttons -->
+<div class="d-flex gap-2 mt-2">
+  <button onclick="downloadChart()" class="btn btn-primary">
+    <i class="fas fa-download"></i> Download Chart
+  </button>
+  <button onclick="prepareDownload()" class="btn btn-secondary mt-3">
+    <i class="fas fa-file-pdf"></i> Download PDF Report
+  </button>  
+</div>
     <!-- Job Listings -->
     <div class="job-listings-container">
       <h2><i class="fas fa-briefcase"></i> Job Listings</h2>
@@ -454,5 +600,103 @@
       });
     });
   </script>
+
+<script>
+  async function renderRadarChart() {
+      const response = await fetch("/api/skill-match-data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+              job_role: "{{ predicted_job }}",
+              extracted_skills: {{ extracted_skills | tojson }}
+          })
+      });
+
+      const data = await response.json();
+      const ctx = document.getElementById('radarChart').getContext('2d');
+
+      const radarChart = new Chart(ctx, {
+          type: 'radar',
+          data: {
+              labels: data.labels,
+              datasets: [{
+                  label: 'Skill Match (1 = Match, 0 = Missing)',
+                  data: data.values,
+                  fill: true,
+                  backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                  borderColor: 'rgba(54, 162, 235, 1)',
+                  pointBackgroundColor: data.values.map(v => v === 1 ? 'rgba(0, 200, 83, 1)' : 'rgba(220, 53, 69, 1)'), // Green for match, Red for missing
+                  pointRadius: 6,
+                  pointHoverRadius: 8
+              }]
+          },
+          options: {
+              responsive: true,
+              animation: {
+                  duration: 1500,
+                  easing: 'easeOutBounce'
+              },
+              scales: {
+                  r: {
+                      min: 0,
+                      max: 1,
+                      ticks: {
+                          stepSize: 1
+                      }
+                  }
+              },
+              plugins: {
+                  tooltip: {
+                      callbacks: {
+                          label: function(context) {
+                              const skill = context.label;
+                              const value = context.raw;
+                              return `${skill}: ${value ? '✅ Matched' : '❌ Missing'}`;
+                          }
+                      }
+                  },
+                  legend: {
+                      labels: {
+                          font: {
+                              size: 14
+                          }
+                      }
+                  }
+              }
+          }
+      });
+
+      // Display match percentage
+      const matchPercentage = (data.values.filter(v => v === 1).length / data.values.length) * 100;
+      document.getElementById("matchSummary").innerText = `✅ Overall Skill Match: ${matchPercentage.toFixed(0)}%`;
+  }
+
+  function downloadChart() {
+      const canvas = document.getElementById('radarChart');
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = 'skill_match_chart.png';
+      link.click();
+  }
+
+  window.onload = renderRadarChart;
+
+  async function sendChartToServer() {
+    const canvas = document.getElementById('radarChart');
+    const chartImage = canvas.toDataURL('image/png');
+
+    await fetch("/upload-chart", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chart: chartImage })
+    });
+  }
+
+  // Called when PDF download is requested
+  async function prepareDownload() {
+    await sendChartToServer();
+    window.location.href = "/download-report";
+  }
+</script>
 </body>
 </html>
