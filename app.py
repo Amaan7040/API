@@ -197,12 +197,12 @@ def extract_skills(text):
 
 # ---------------------- Database Connection ---------------------- #
 
-def get_db_connection(db_name="resume_screening_db"):
+def get_db_connection(db_name=None):
     return mysql.connector.connect(
         host=os.getenv("MYSQL_HOST"),
         user=os.getenv("MYSQL_USER"),
         password=os.getenv("MYSQL_PASSWORD"),
-        database=os.getenv("MYSQL_DATABASE"),
+        database=db_name or os.getenv("MYSQL_DATABASE"),
         auth_plugin="mysql_native_password"
     )
 
@@ -508,7 +508,7 @@ def signup():
             return render_template('signup.html', message=message)
         hashed_password = generate_password_hash(password)
         try:
-            conn = get_db_connection("signup_db")
+            conn = get_db_connection(os.getenv("USER_CREDENTIALS_DATABASE"))
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM users_signup_details WHERE email = %s", (email,))
             if cursor.fetchone():
@@ -533,7 +533,7 @@ def login():
         email = request.form.get('email')
         password = request.form.get('password')
         try:
-            conn = get_db_connection("signup_db")
+            conn = get_db_connection(os.getenv("USER_CREDENTIALS_DATABASE"))
             cursor = conn.cursor()
             cursor.execute("SELECT id, username, password FROM users_signup_details WHERE email = %s", (email,))
             user = cursor.fetchone()
