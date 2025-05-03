@@ -1,8 +1,7 @@
-from flask import Flask, jsonify,redirect, render_template, request, session
-import http.client
+from flask import Flask, jsonify, render_template, request, session, send_file, redirect, url_for
+from io import BytesIO
+from reportlab.pdfgen import canvas
 import json
-import urllib.parse
-import os
 import pickle
 import re
 import docx
@@ -13,8 +12,11 @@ import spacy
 from spacy.matcher import PhraseMatcher
 import mysql.connector
 import requests
-import numpy as np
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash 
+from dotenv import load_dotenv
+import os
+
+load_dotenv("credentials.env")
 
 # ---------------------- Resume Scoring Features ---------------------- #
 
@@ -126,7 +128,7 @@ technical_skills = {
     "natural language processing", "big data", "hadoop", "spark", 
     "data analytics", "power bi", "tableau", "data visualization",
     "reinforcement learning", "advanced dsa", "data structures and algorithm",
-    "devops", "image processing", "jira", "postman", "excel", "data processing", "scikit-learn"
+    "devops", "image processing", "jira", "postman", "excel", "data processing", "scikit-learn",
     "matplotlib", "seaborn", "api integration", "data mining","scikit-learn", "data preprocessing"
 }
 
@@ -197,10 +199,10 @@ def extract_skills(text):
 
 def get_db_connection(db_name="resume_screening_db"):
     return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="amaan@khan704093",
-        database=db_name,
+        host=os.getenv("MYSQL_HOST"),
+        user=os.getenv("MYSQL_USER"),
+        password=os.getenv("MYSQL_PASSWORD"),
+        database=os.getenv("MYSQL_DATABASE"),
         auth_plugin="mysql_native_password"
     )
 
@@ -297,7 +299,87 @@ def compare_skills(predicted_job, extracted_skills, user_name):
 
 app = Flask(__name__, template_folder="templates")
 CORS(app)
-app.secret_key = "amaankhan746473376693"
+app.secret_key=os.getenv("FLASK_SECRET_KEY")
+
+@app.route("/upload-chart", methods=["POST"])
+def upload_chart():
+    data = request.get_json()
+    chart_base64 = data.get("chart", "")
+
+    if chart_base64.startswith("data:image/png;base64,"):
+        chart_base64 = chart_base64.split(",")[1]
+
+    session["chart_image"] = chart_base64
+    return jsonify({"status": "received"})
+
+@app.route("/download-report")
+def download_report():
+    data = session.get('report_data')
+    if not data:
+        return redirect(url_for('index'))
+
+    buffer = BytesIO()
+    p = canvas.Canvas(buffer)
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(50, 800, "Resume Analysis Report")
+    p.setFont("Helvetica", 12)
+
+    y = 760
+    for label, value in [
+        ("Name:", data["name"]),
+        ("Predicted Role:", data["predicted_job"]),
+        ("Score:", f"{data['resume_score']} ({data['resume_category']})"),
+    ]:
+        p.drawString(50, y, f"{label} {value}")
+        y -= 20
+
+    # Skills
+    p.drawString(50, y, "Extracted Skills:")
+    y -= 20
+    for skill in data["skills"]:
+        p.drawString(70, y, f"- {skill}")
+        y -= 15
+        if y < 50:
+            p.showPage()
+            y = 800
+
+    # Missing Skills
+    if data["missing_skills"]:
+        p.drawString(50, y, "Recommended (Missing) Skills:")
+        y -= 20
+        for skill in data["missing_skills"]:
+            p.drawString(70, y, f"- {skill}")
+            y -= 15
+            if y < 50:
+                p.showPage()
+                y = 800
+
+    # Add radar chart image if available
+    chart_data = session.get("chart_image")
+    if chart_data:
+        try:
+            from base64 import b64decode
+            from reportlab.lib.utils import ImageReader
+            from PIL import Image
+            img_data = b64decode(chart_data)
+            img = Image.open(BytesIO(img_data))
+            img_io = BytesIO()
+            img.save(img_io, format='PNG')
+            img_io.seek(0)
+            p.drawImage(ImageReader(img_io), 100, 400, width=400, height=300)
+        except Exception as e:
+            print("[ERROR] Failed to draw chart:", e)
+
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name="resume_analysis_report.pdf",
+        mimetype="application/pdf"
+    )
 
 @app.route("/api/job-details", methods=["GET"])
 def job_details_api():
@@ -329,6 +411,15 @@ def index():
                 
                 if not error_message:
                     missing_skills = compare_skills(predicted_job, extracted_skills, user_name)
+                    # ✅ Store for PDF report
+                    session['report_data'] = {
+                        "name": user_name or "Unknown",
+                        "predicted_job": predicted_job or "N/A",
+                        "resume_score": resume_score,
+                        "resume_category": resume_category,
+                        "skills": extracted_skills,
+                        "missing_skills": missing_skills
+                    }
                     try:
                         conn = get_db_connection()
                         cursor = conn.cursor()
@@ -365,7 +456,7 @@ def index():
 def fetch_job_listings_from_api(query="developer", country="india", page=1, job_type=None):
     url = "https://jsearch.p.rapidapi.com/search"
     headers = {
-        "x-rapidapi-key": "8f92a3f809msh5eedc068f4e98e7p196ca9jsn325f2d6ae7bf",
+        "x-rapidapi-key": os.getenv("API_KEY"),
         "x-rapidapi-host": "jsearch.p.rapidapi.com"
     }
     params = {"query": f"{query} in {country}", "page": page, "num_pages": 1}
@@ -373,6 +464,37 @@ def fetch_job_listings_from_api(query="developer", country="india", page=1, job_
         params["job_type"] = job_type
     response = requests.get(url, headers=headers, params=params)
     return response.text
+
+@app.route("/api/skill-match-data", methods=["POST"])
+def skill_match_data():
+    data = request.get_json()
+    predicted_job = data.get("job_role")
+    extracted_skills = data.get("extracted_skills", [])
+
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT skills FROM jobrolesskills WHERE job_role = %s", (predicted_job,))
+        job_data = cursor.fetchone()
+        cursor.close()
+        conn.close()
+
+        if job_data:
+            required_skills = job_data["skills"].lower().split(", ")
+            required_set = set(required_skills)
+            extracted_set = set(s.lower() for s in extracted_skills)
+
+            labels = required_skills[:10]  
+            match_values = [1 if skill in extracted_set else 0 for skill in labels]
+
+            return jsonify({
+                "labels": labels,
+                "values": match_values,
+            })
+        else:
+            return jsonify({"labels": [], "values": []})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
@@ -436,7 +558,6 @@ def dashboard():
     # if 'username' in session:
     #     return f"Welcome {session['username']} to your dashboard!"
     return redirect('/')
-
 
 if __name__ == "__main__":
     app.run(debug=True)
