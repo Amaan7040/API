@@ -15,6 +15,7 @@ import requests
 from werkzeug.security import generate_password_hash, check_password_hash 
 from dotenv import load_dotenv
 import os
+from flask_session import Session  
 
 load_dotenv("credentials.env")
 
@@ -301,76 +302,107 @@ app = Flask(__name__, template_folder="templates")
 CORS(app)
 app.secret_key=os.getenv("FLASK_SECRET_KEY")
 
+# Configure server-side sessions
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['SESSION_FILE_DIR'] = './flask_sessions'
+Session(app)
+
 @app.route("/upload-chart", methods=["POST"])
 def upload_chart():
     data = request.get_json()
     chart_base64 = data.get("chart", "")
-
+    
+    # Store chart data in session (now server-side)
     if chart_base64.startswith("data:image/png;base64,"):
-        chart_base64 = chart_base64.split(",")[1]
-
+        chart_base64 = chart_base64.split(",", 1)[1]
     session["chart_image"] = chart_base64
     return jsonify({"status": "received"})
 
 @app.route("/download-report")
 def download_report():
-    data = session.get('report_data')
-    if not data:
-        return redirect(url_for('index'))
+    data = session.get('report_data', {})
+    chart_data = session.get("chart_image")
 
     buffer = BytesIO()
     p = canvas.Canvas(buffer)
+    p.setTitle("Resume Analysis Report")
+
+    # Set background to white
+    p.setFillColorRGB(1, 1, 1)
+    p.rect(0, 0, 612, 792, fill=1, stroke=0)
+    p.setFillColorRGB(0, 0, 0)
+
+    # Header
     p.setFont("Helvetica-Bold", 16)
-    p.drawString(50, 800, "Resume Analysis Report")
+    p.drawString(50, 770, "Resume Analysis Report")
+    
+    y_position = 730
     p.setFont("Helvetica", 12)
 
-    y = 760
-    for label, value in [
-        ("Name:", data["name"]),
-        ("Predicted Role:", data["predicted_job"]),
-        ("Score:", f"{data['resume_score']} ({data['resume_category']})"),
-    ]:
-        p.drawString(50, y, f"{label} {value}")
-        y -= 20
+    # Personal Info Section
+    info_lines = [
+        f"Name: {data.get('name', 'N/A')}",
+        f"Predicted Role: {data.get('predicted_job', 'N/A')}",
+        f"Score: {data.get('resume_score', 'N/A')} ({data.get('resume_category', '')})"
+    ]
+    
+    for line in info_lines:
+        p.drawString(50, y_position, line)
+        y_position -= 25
 
-    # Skills
-    p.drawString(50, y, "Extracted Skills:")
-    y -= 20
-    for skill in data["skills"]:
-        p.drawString(70, y, f"- {skill}")
-        y -= 15
-        if y < 50:
+    # Extracted Skills
+    y_position -= 10
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, y_position, "Extracted Skills:")
+    y_position -= 20
+    p.setFont("Helvetica", 12)
+    
+    for skill in data.get("skills", [])[:15]:  # Show top 15 skills
+        if y_position < 100:
             p.showPage()
-            y = 800
+            y_position = 770
+        p.drawString(70, y_position, f"- {skill}")
+        y_position -= 15
 
-    # Missing Skills
-    if data["missing_skills"]:
-        p.drawString(50, y, "Recommended (Missing) Skills:")
-        y -= 20
-        for skill in data["missing_skills"]:
-            p.drawString(70, y, f"- {skill}")
-            y -= 15
-            if y < 50:
+    # Recommended Skills
+    if data.get("missing_skills"):
+        y_position -= 15
+        p.setFont("Helvetica-Bold", 12)
+        p.drawString(50, y_position, "Recommended Skills:")
+        y_position -= 20
+        p.setFont("Helvetica", 12)
+        
+        for skill in data.get("missing_skills", [])[:10]:  # Show top 10 recommendations
+            if y_position < 100:
                 p.showPage()
-                y = 800
+                y_position = 770
+            p.drawString(70, y_position, f"- {skill}")
+            y_position -= 15
 
-    # Add radar chart image if available
-    chart_data = session.get("chart_image")
+    # Radar Chart Section
     if chart_data:
         try:
+            # Add new page if less than 300 points remaining
+            if y_position > 300:
+                y_position -= 30
+            else:
+                p.showPage()
+                y_position = 770
+                
+            p.setFont("Helvetica-Bold", 14)
+            p.drawString(50, y_position, "Radar Chart: Skill Match Analysis")
+            y_position -= 30
+
             from base64 import b64decode
             from reportlab.lib.utils import ImageReader
-            from PIL import Image
             img_data = b64decode(chart_data)
-            img = Image.open(BytesIO(img_data))
-            img_io = BytesIO()
-            img.save(img_io, format='PNG')
-            img_io.seek(0)
-            p.drawImage(ImageReader(img_io), 100, 400, width=400, height=300)
+            img_reader = ImageReader(BytesIO(img_data))
+            
+            # Draw image with white background
+            p.drawImage(img_reader, 50, y_position-300, width=500, height=300, mask='auto')
         except Exception as e:
-            print("[ERROR] Failed to draw chart:", e)
+            print(f"[ERROR] Chart rendering failed: {str(e)}")
 
-    p.showPage()
     p.save()
     buffer.seek(0)
 
