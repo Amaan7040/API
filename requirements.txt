@@ -1,0 +1,12 @@
+Flask
+flask-cors
+flask-session
+reportlab
+python-docx
+pdfplumber
+scikit-learn
+spacy
+mysql-connector-python
+requests
+python-dotenv
+werkzeug
