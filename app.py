@@ -15,6 +15,7 @@ import requests
 from werkzeug.security import generate_password_hash, check_password_hash 
 from dotenv import load_dotenv
 import os
+import zipfile
 from flask_session import Session  
 
 load_dotenv("credentials.env")
@@ -230,8 +231,18 @@ def extract_name(text):
 # Updated: Load combined model and vectorizer (tvectorizer)
 # ==========================================================
 def load_model_and_vectorizer():
-    try:
-        with open("combined_job_predict_model1.pkl", "rb") as model_file:
+     try:
+        model_pkl = "combined_job_predict_model1.pkl"
+        model_zip = "combined_job_predict_model1.zip"
+
+        # Unzip model if not already unzipped
+        if not os.path.exists(model_pkl) and os.path.exists(model_zip):
+            with zipfile.ZipFile(model_zip, 'r') as zip_ref:
+                zip_ref.extractall()
+            print(f"[DEBUG] Extracted {model_zip}")
+
+        # Load model and vectorizer
+        with open(model_pkl, "rb") as model_file:
             combined_model = pickle.load(model_file)
         with open("combined_tfidf_vectorizer1.pkl", "rb") as vectorizer_file:
             tvectorizer = pickle.load(vectorizer_file)
