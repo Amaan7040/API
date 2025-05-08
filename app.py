@@ -248,7 +248,7 @@ def load_model_and_vectorizer():
             tvectorizer = pickle.load(vectorizer_file)
         print("[DEBUG] Combined model and vectorizer loaded.")
         return combined_model, tvectorizer
-    except Exception as e:
+     except Exception as e:
         print(f"[ERROR] Model loading failed: {e}")
         return None, None
 
