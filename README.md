@@ -15,3 +15,12 @@ resume_score_model11.pkl is a pretrained model for predicting the uploaded resum
 # .env file
 
 I used .env file to store all the sesitive keys and passwords to not to show directly in the code so that it will help to maintain security as well as helps to make chnages related to password, db names or keys in one place and will be refracted to the main code.
+
+# Jupyter Notebook
+
+Another Resume ooooooooooo.ipyn is the notebook where i trained job role prediction model.
+Resume Job Role and Score Analysis.ipynb is for resume score model training and testing(do not consider job role prediction section).
+
+# Datasets
+
+combined_dataset_resume.csv is a dataset used for resume job role prediction and Enhanced_Resume_Dataset (1).csv is a dataset used for resume score prediction.
